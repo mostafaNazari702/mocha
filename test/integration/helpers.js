@@ -436,28 +436,104 @@ async function runMochaWatchAsync(args, opts, change) {
     ...opts,
     fork: process.platform === "win32",
   };
+
+  const isJSONReporter = args.some(
+    (arg, i) => arg === "--reporter" && args[i + 1] === "json",
+  );
+
   const [mochaProcess, resultPromise] = invokeMochaAsync(
     [...args, "--watch"],
     opts,
   );
-  await sleep(opts.sleepMs);
-  await change(mochaProcess);
-  await sleep(opts.sleepMs);
 
-  if (
-    !(mochaProcess.connected
-      ? mochaProcess.send("SIGINT")
-      : mochaProcess.kill("SIGINT"))
-  ) {
-    throw new Error("failed to send signal to subprocess");
+  const RUN_COMPLETE_MARKER = '"stats":';
+  let runsCompleted = 0;
+  /** @type {Array<{count: number, resolve: () => void}>} */
+  let pendingWaiters = [];
+
+  const onStdout = (data) => {
+    const chunk = data.toString();
+    let idx = 0;
+    while ((idx = chunk.indexOf(RUN_COMPLETE_MARKER, idx)) !== -1) {
+      runsCompleted++;
+      idx += RUN_COMPLETE_MARKER.length;
+      pendingWaiters = pendingWaiters.filter((w) => {
+        if (runsCompleted >= w.count) {
+          w.resolve();
+          return false;
+        }
+        return true;
+      });
+    }
+  };
+
+  const waitForRuns = (count, timeoutMs) => {
+    if (runsCompleted >= count) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      let timer;
+      const waiter = {
+        count,
+        resolve: () => {
+          clearTimeout(timer);
+          resolve(true);
+        },
+      };
+      timer = setTimeout(() => {
+        pendingWaiters = pendingWaiters.filter((w) => w !== waiter);
+        debug(
+          "watch run wait timed out at %d/%d after %dms",
+          runsCompleted,
+          count,
+          timeoutMs,
+        );
+        resolve(false);
+      }, timeoutMs);
+      pendingWaiters.push(waiter);
+    });
+  };
+
+  mochaProcess.stdout.on("data", onStdout);
+
+  try {
+    if (isJSONReporter) {
+      await waitForRuns(1, opts.sleepMs * 3);
+    } else {
+      await sleep(opts.sleepMs);
+    }
+
+    await change(mochaProcess);
+
+    if (isJSONReporter) {
+      const baseline = runsCompleted;
+      const sawRerun = await waitForRuns(baseline + 1, opts.sleepMs * 3);
+      if (sawRerun) {
+        while (true) {
+          const before = runsCompleted;
+          const more = await waitForRuns(before + 1, opts.sleepMs);
+          if (!more) break;
+        }
+      }
+    } else {
+      await sleep(opts.sleepMs);
+    }
+
+    if (
+      !(mochaProcess.connected
+        ? mochaProcess.send("SIGINT")
+        : mochaProcess.kill("SIGINT"))
+    ) {
+      throw new Error("failed to send signal to subprocess");
+    }
+
+    const res = await resultPromise;
+
+    // we kill the process with `SIGINT`, so it will always appear as "failed" to our
+    // custom assertions (a non-zero exit code 130). just change it to 0.
+    res.code = 0;
+    return res;
+  } finally {
+    mochaProcess.stdout.removeListener("data", onStdout);
   }
-
-  const res = await resultPromise;
-
-  // we kill the process with `SIGINT`, so it will always appear as "failed" to our
-  // custom assertions (a non-zero exit code 130). just change it to 0.
-  res.code = 0;
-  return res;
 }
 
 /**

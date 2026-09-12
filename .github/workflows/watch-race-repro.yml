@@ -1,0 +1,63 @@
+name: Watch race repro (mochajs/mocha#6263)
+
+on:
+  push:
+    branches: [watch-race-repro]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    name: repro on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - run: git config --global core.autocrlf false
+
+      - name: Check out the repro scripts
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Check out mochajs/mocha main
+        uses: actions/checkout@v5
+        with:
+          repository: mochajs/mocha
+          ref: main
+          path: mocha
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install
+        working-directory: mocha
+        run: npm ci --ignore-scripts
+
+      - name: Record which commit of main this is
+        working-directory: mocha
+        run: git log -1 --format="main = %H %s"
+
+      - name: 1/3 - main, unchanged
+        run: node watch-repro/run.cjs mocha "main, unchanged"
+
+      - name: 2/3 - main + patch as reviewed on #6263
+        shell: bash
+        run: |
+          (cd mocha && git apply ../watch-repro/approach-a.patch)
+          node watch-repro/run.cjs mocha "main + patch as reviewed"
+          (cd mocha && git checkout -- lib/cli/watch-run.cjs)
+
+      - name: 3/3 - main + the patch now proposed
+        shell: bash
+        run: |
+          (cd mocha && git apply ../watch-repro/approach-b.patch)
+          node watch-repro/run.cjs mocha "main + patch now proposed"
+          (cd mocha && git checkout -- lib/cli/watch-run.cjs)

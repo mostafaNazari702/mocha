@@ -1,0 +1,29 @@
+name: repro 1948
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [triage-repros]
+
+jobs:
+  repro:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [20, 24]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - working-directory: .github/triage-repros/1948
+        run: |
+          set +e
+          node --version
+          npm i
+          node watch.js

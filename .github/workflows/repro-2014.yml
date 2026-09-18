@@ -1,0 +1,30 @@
+name: repro 2014
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [triage-repros]
+
+jobs:
+  repro:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [20, 24]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - working-directory: .github/triage-repros/2014
+        run: |
+          set +e
+          node --version
+          npm i
+          npx mocha --no-config test.js
+          echo "exit $?"

@@ -16,4 +16,5 @@ jobs:
       - run: |
           cd .github/triage-repros/5665
           npm install
+          sudo sysctl -w fs.inotify.max_user_watches=0
           node watch.js

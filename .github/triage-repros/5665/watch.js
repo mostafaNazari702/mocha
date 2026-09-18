@@ -1,15 +1,11 @@
 const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 
-// make something inside the watched tree that chokidar will fail to stat
+// windows: make a dir in the watched tree that chokidar can't stat.
+// linux: the workflow sets fs.inotify.max_user_watches=0 instead.
 if (process.platform === 'win32') {
   fs.mkdirSync('locked', { recursive: true });
   execSync(`icacls locked /deny "${process.env.USERNAME}:(OI)(CI)(F)"`, { stdio: 'ignore' });
-} else {
-  fs.rmSync('loop', { force: true });
-  fs.symlinkSync('loop', 'loop');
-  fs.mkdirSync('locked/sub', { recursive: true });
-  fs.chmodSync('locked', 0o400);
 }
 
 const m = spawn(

@@ -1,9 +1,12 @@
-name: triage 5665
+name: repro 5665
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: [triage-repros]
 
 jobs:
-  watch:
+  repro:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

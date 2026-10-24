@@ -1,8 +1,15 @@
 "use strict";
 
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const sinon = require("sinon");
 const rewiremock = require("rewiremock/node");
-const { parsers } = require("../../../lib/cli/config.cjs");
+const {
+  parsers,
+  findConfig,
+  CONFIG_FILES,
+} = require("../../../lib/cli/config.cjs");
 
 describe("cli/config", function () {
   const phonyConfigObject = { ok: true };
@@ -137,71 +144,56 @@ describe("cli/config", function () {
   });
 
   describe("findConfig()", function () {
-    let findup;
-    let findConfig;
-    let CONFIG_FILES;
+    let tmpdir;
+
+    const touch = (...segments) => {
+      const filepath = path.join(tmpdir, ...segments);
+      fs.mkdirSync(path.dirname(filepath), { recursive: true });
+      fs.writeFileSync(filepath, "");
+      return filepath;
+    };
 
     beforeEach(function () {
-      findup = sinon.stub();
-      const config = rewiremock.proxy(
-        require.resolve("../../../lib/cli/config.cjs"),
-        (r) => ({
-          "find-up-simple": r.by(() => ({ findUpSync: findup })),
-        }),
-      );
-      findConfig = config.findConfig;
-      CONFIG_FILES = config.CONFIG_FILES;
+      tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "mocha-find-config-"));
     });
 
-    it("should look for one of the config files using findup-sync", function () {
-      findup.onFirstCall().returns("/some/path/.mocharc.js");
-      findConfig();
-      expect(findup, "to have a call satisfying", {
-        args: [CONFIG_FILES[0], { cwd: process.cwd() }],
-        returned: "/some/path/.mocharc.js",
-      });
+    afterEach(function () {
+      fs.rmSync(tmpdir, { recursive: true, force: true });
+    });
+
+    it("should look in the current working directory by default", function () {
+      const expected = touch(".mocharc.yml");
+      sinon.stub(process, "cwd").returns(tmpdir);
+      expect(findConfig(), "to equal", expected);
     });
 
     it("should support an explicit `cwd`", function () {
-      findup.onFirstCall().returns("/some/path/.mocharc.js");
-      findConfig("/some/path/");
-      expect(findup, "to have a call satisfying", {
-        args: [CONFIG_FILES[0], { cwd: "/some/path/" }],
-        returned: "/some/path/.mocharc.js",
-      });
+      const expected = touch(".mocharc.yml");
+      expect(findConfig(tmpdir), "to equal", expected);
     });
 
-    it("should call findup-sync with all config filename args in order", function () {
-      findup.returns(undefined);
-      findConfig("/some/path/");
+    it("should look in parent directories", function () {
+      const expected = touch(".mocharc.json");
+      const cwd = path.dirname(touch("some", "path", "file.txt"));
+      expect(findConfig(cwd), "to equal", expected);
+    });
+
+    it("should prefer config files in CONFIG_FILES order", function () {
+      CONFIG_FILES.forEach((file) => touch(file));
       expect(
-        findup,
-        "to have calls satisfying",
-        CONFIG_FILES.map((file) => ({ args: [file, { cwd: "/some/path/" }] })),
+        findConfig(tmpdir),
+        "to equal",
+        path.join(tmpdir, CONFIG_FILES[0]),
       );
     });
 
-    it("should not make extra calls once an item is found", function () {
-      const expected = "/some/path/.mocharc.mjs";
-      findup
-        .onFirstCall()
-        .returns(undefined)
-        .onSecondCall()
-        .returns(undefined)
-        .onThirdCall()
-        .returns(expected);
-
-      expect(findConfig("/some/path/"), "to equal", expected);
-      expect(findup, "was called times", 3);
-      expect(findup.getCalls(), "to satisfy", [
-        { args: [CONFIG_FILES[0], { cwd: "/some/path/" }] },
-        { args: [CONFIG_FILES[1], { cwd: "/some/path/" }] },
-        { args: [CONFIG_FILES[2], { cwd: "/some/path/" }] },
-      ]);
+    it("should skip config files that do not exist", function () {
+      const expected = touch(".mocharc.mjs");
+      touch(".mocharc.json");
+      expect(findConfig(tmpdir), "to equal", expected);
     });
 
     it("should return undefined if no item is found", function () {
-      findup.returns(undefined);
       expect(findConfig("/some/path/"), "to be undefined");
     });
   });

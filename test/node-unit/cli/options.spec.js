@@ -9,7 +9,7 @@ const { proxy } = rewiremock;
 
 const modulePath = require.resolve("../../../lib/cli/options.cjs");
 const mocharcPath = require.resolve("../../../lib/mocharc.json");
-const configPath = require.resolve("../../../lib/cli/config.cjs");
+const configPath = require.resolve("../../../lib/cli/config.js");
 
 const proxyLoadOptions = ({
   readFileSync = {},

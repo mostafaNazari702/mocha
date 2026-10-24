@@ -4,12 +4,12 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const sinon = require("sinon");
-const rewiremock = require("rewiremock/node");
 const {
   parsers,
+  loadConfig,
   findConfig,
   CONFIG_FILES,
-} = require("../../../lib/cli/config.cjs");
+} = require("../../../lib/cli/config.js");
 
 describe("cli/config", function () {
   const phonyConfigObject = { ok: true };
@@ -19,17 +19,6 @@ describe("cli/config", function () {
   });
 
   describe("loadConfig()", function () {
-    let parsers;
-    let loadConfig;
-
-    beforeEach(function () {
-      const config = rewiremock.proxy(
-        require.resolve("../../../lib/cli/config.cjs"),
-      );
-      parsers = config.parsers;
-      loadConfig = config.loadConfig;
-    });
-
     describe("when parsing succeeds", function () {
       beforeEach(function () {
         sinon.stub(parsers, "yaml").returns(phonyConfigObject);

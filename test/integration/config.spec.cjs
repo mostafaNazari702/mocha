@@ -5,7 +5,7 @@
 
 var fs = require("node:fs");
 var path = require("node:path");
-var loadConfig = require("../../lib/cli/config.cjs").loadConfig;
+var loadConfig = require("../../lib/cli/config.js").loadConfig;
 
 describe("config", function () {
   it("should return the same values for all supported config types", function () {
